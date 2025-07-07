@@ -30,17 +30,28 @@ fn encodeChunk(in: anytype, out: anytype) !usize {
         chunk = std.mem.readInt(u24, &ibuf, .big);
 
         // Skip loop as there are just four values to process
-        if (readBytes > 0) {
-            value = chunk & (0b111111 << 18);
-            obuf[0] = alphabet[value >> 18];
-        }
+        //
+        // If we didn't read any bytes, we would not end up here - so let's
+        // handle the first two sextets.
+        value = chunk & (0b111111 << 18);
+        obuf[0] = alphabet[value >> 18];
 
-        if (readBytes > 1) {
-            value = chunk & (0b111111 << 12);
-            obuf[1] = alphabet[value >> 12];
-        }
+        value = chunk & (0b111111 << 12);
+        obuf[1] = alphabet[value >> 12];
 
-        if (readBytes > 2) {
+        // This is where we need to think about padding, as one byte will always
+        // fill the first two sextets.
+        if (readBytes == 1) {
+            // One byte = 8 bit = 2 sextets + 2 padding
+            obuf[2] = '=';
+            obuf[3] = '=';
+        } else if (readBytes == 2) {
+            // Two bytes = 16 bit = 3 sextets + 1 padding
+            value = chunk & (0b111111 << 6);
+            obuf[2] = alphabet[value >> 6];
+            obuf[3] = '=';
+        } else {
+            // Three bytes = 24 bit = all sextets
             value = chunk & (0b111111 << 6);
             obuf[2] = alphabet[value >> 6];
 
@@ -77,5 +88,31 @@ test "encode chunk of 3 bytes" {
     try testing.expectEqual(3, bytes_read);
 
     const expected = "MTIz";
+    try std.testing.expectEqualStrings(expected, ostream.getWritten());
+}
+
+test "encode chunk of 7 bytes" {
+    var istream = std.io.fixedBufferStream("1234567");
+
+    var output: [4096]u8 = undefined;
+    var ostream = std.io.fixedBufferStream(&output);
+
+    const bytes_read = try encodeChunk(&istream, &ostream);
+    try testing.expectEqual(7, bytes_read);
+
+    const expected = "MTIzNDU2Nz==";
+    try std.testing.expectEqualStrings(expected, ostream.getWritten());
+}
+
+test "encode chunk of 8 bytes" {
+    var istream = std.io.fixedBufferStream("12345678");
+
+    var output: [4096]u8 = undefined;
+    var ostream = std.io.fixedBufferStream(&output);
+
+    const bytes_read = try encodeChunk(&istream, &ostream);
+    try testing.expectEqual(8, bytes_read);
+
+    const expected = "MTIzNDU2Nzg=";
     try std.testing.expectEqualStrings(expected, ostream.getWritten());
 }
