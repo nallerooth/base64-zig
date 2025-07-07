@@ -14,34 +14,48 @@ pub fn encode(bytes: []const u8) i32 {
 // encodeChunk reads bytes from one stream and writes the output to another
 fn encodeChunk(in: anytype, out: anytype) !usize {
     // Work with 48 bits for now, as that'e divisible by both 6 and 8
-    var ibuf: [6]u8 = undefined;
-    var obuf: [8]u8 = undefined;
+    var ibuf: [3]u8 = undefined;
+    var obuf: [4]u8 = undefined;
+    var totalRead: usize = 0;
+    var readBytes: usize = undefined;
+    var value: u24 = undefined;
+    var chunk: u24 = undefined;
 
-    const readBytes = try in.reader().readAll(&ibuf);
-    const chunk: u48 = std.mem.readInt(u48, &ibuf, .big);
-
-    var mask: u48 = 0b111111 << 42;
-    var i: u6 = 7;
-    var value: u48 = undefined;
-    while (i >= 0) {
-        value = (chunk & mask) >> (6 * i);
-        obuf[7 - i] = alphabet[value];
-        mask = mask >> 6;
-        if (i == 0) {
+    while (true) {
+        readBytes = try in.reader().readAll(&ibuf);
+        if (readBytes == 0) {
             break;
         }
-        i -= 1;
-        std.debug.print("\n", .{});
+        totalRead += readBytes;
+        chunk = std.mem.readInt(u24, &ibuf, .big);
+
+        // Skip loop as there are just four values to process
+        if (readBytes > 0) {
+            value = chunk & (0b111111 << 18);
+            obuf[0] = alphabet[value >> 18];
+        }
+
+        if (readBytes > 1) {
+            value = chunk & (0b111111 << 12);
+            obuf[1] = alphabet[value >> 12];
+        }
+
+        if (readBytes > 2) {
+            value = chunk & (0b111111 << 6);
+            obuf[2] = alphabet[value >> 6];
+
+            value = chunk & (0b111111);
+            obuf[3] = alphabet[value];
+        }
+
+        try out.writer().writeAll(&obuf);
     }
 
-    try out.writer().writeAll(&obuf);
-
-    return readBytes;
+    return totalRead;
 }
 
 test "encode chunk of 6 bytes" {
-    const input = "123456";
-    var istream = std.io.fixedBufferStream(input);
+    var istream = std.io.fixedBufferStream("123456");
 
     var output: [4096]u8 = undefined;
     var ostream = std.io.fixedBufferStream(&output);
