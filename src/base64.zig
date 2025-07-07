@@ -18,8 +18,6 @@ fn encodeChunk(in: anytype, out: anytype) !usize {
     var obuf: [8]u8 = undefined;
 
     const readBytes = try in.reader().readAll(&ibuf);
-    std.debug.assert(readBytes == 6);
-
     const chunk: u48 = std.mem.readInt(u48, &ibuf, .big);
 
     var mask: u48 = 0b111111 << 42;
@@ -52,5 +50,18 @@ test "encode chunk of 6 bytes" {
     try testing.expectEqual(6, bytes_encoded);
 
     const expected = "MTIzNDU2";
+    try std.testing.expectEqualStrings(expected, ostream.getWritten());
+}
+
+test "encode chunk of 3 bytes" {
+    var istream = std.io.fixedBufferStream("123");
+
+    var output: [4096]u8 = undefined;
+    var ostream = std.io.fixedBufferStream(&output);
+
+    const bytes_read = try encodeChunk(&istream, &ostream);
+    try testing.expectEqual(3, bytes_read);
+
+    const expected = "MTIz";
     try std.testing.expectEqualStrings(expected, ostream.getWritten());
 }
