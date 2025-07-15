@@ -12,57 +12,41 @@ pub fn encode(bytes: []const u8) i32 {
 }
 
 // encodeChunk reads bytes from one stream and writes the output to another
-fn encodeChunk(in: anytype, out: anytype) !usize {
-    // Work with 48 bits for now, as that'e divisible by both 6 and 8
+fn encodeStream(in: anytype, out: anytype) !usize {
+    // Read up to 3 bytes at a time, resulting in 4 bytes of output
     var ibuf: [3]u8 = undefined;
     var obuf: [4]u8 = undefined;
-    var totalRead: usize = 0;
-    var readBytes: usize = undefined;
-    var value: u24 = undefined;
+
     var chunk: u24 = undefined;
 
+    var total_read: usize = 0;
+    var bytes_read: usize = undefined;
+
     while (true) {
-        readBytes = try in.reader().readAll(&ibuf);
-        if (readBytes == 0) {
+        bytes_read = try in.reader().readAll(&ibuf);
+        if (bytes_read == 0) {
             break;
         }
-        totalRead += readBytes;
+        total_read += bytes_read;
         chunk = std.mem.readInt(u24, &ibuf, .big);
 
-        // Skip loop as there are just four values to process
-        //
-        // If we didn't read any bytes, we would not end up here - so let's
-        // handle the first two sextets.
-        value = chunk & (0b111111 << 18);
-        obuf[0] = alphabet[value >> 18];
-
-        value = chunk & (0b111111 << 12);
-        obuf[1] = alphabet[value >> 12];
-
-        // This is where we need to think about padding, as one byte will always
-        // fill the first two sextets.
-        if (readBytes == 1) {
-            // One byte = 8 bit = 2 sextets + 2 padding
-            obuf[2] = '=';
-            obuf[3] = '=';
-        } else if (readBytes == 2) {
-            // Two bytes = 16 bit = 3 sextets + 1 padding
-            value = chunk & (0b111111 << 6);
-            obuf[2] = alphabet[value >> 6];
-            obuf[3] = '=';
-        } else {
-            // Three bytes = 24 bit = all sextets
-            value = chunk & (0b111111 << 6);
-            obuf[2] = alphabet[value >> 6];
-
-            value = chunk & (0b111111);
-            obuf[3] = alphabet[value];
-        }
+        // We read at least one byte, so we know the first two sextets have data
+        obuf[0] = encodeOffsetValue(chunk, 18);
+        obuf[1] = encodeOffsetValue(chunk, 12);
+        obuf[2] = if (bytes_read >= 2) encodeOffsetValue(chunk, 6) else '=';
+        obuf[3] = if (bytes_read == 3) encodeOffsetValue(chunk, 0) else '=';
 
         try out.writer().writeAll(&obuf);
     }
 
-    return totalRead;
+    return total_read;
+}
+
+// encodeOffsetValue applies a bitmask to the chunk and returns the alphabet
+// index for the resulting value.
+fn encodeOffsetValue(chunk: u24, offset: anytype) u8 {
+    const value: u24 = chunk & (0b111111 << offset);
+    return alphabet[value >> offset];
 }
 
 test "encode chunk of 6 bytes" {
@@ -71,7 +55,7 @@ test "encode chunk of 6 bytes" {
     var output: [4096]u8 = undefined;
     var ostream = std.io.fixedBufferStream(&output);
 
-    const bytes_encoded = try encodeChunk(&istream, &ostream);
+    const bytes_encoded = try encodeStream(&istream, &ostream);
     try testing.expectEqual(6, bytes_encoded);
 
     const expected = "MTIzNDU2";
@@ -84,7 +68,7 @@ test "encode chunk of 3 bytes" {
     var output: [4096]u8 = undefined;
     var ostream = std.io.fixedBufferStream(&output);
 
-    const bytes_read = try encodeChunk(&istream, &ostream);
+    const bytes_read = try encodeStream(&istream, &ostream);
     try testing.expectEqual(3, bytes_read);
 
     const expected = "MTIz";
@@ -97,7 +81,7 @@ test "encode chunk of 7 bytes" {
     var output: [4096]u8 = undefined;
     var ostream = std.io.fixedBufferStream(&output);
 
-    const bytes_read = try encodeChunk(&istream, &ostream);
+    const bytes_read = try encodeStream(&istream, &ostream);
     try testing.expectEqual(7, bytes_read);
 
     const expected = "MTIzNDU2Nz==";
@@ -110,7 +94,7 @@ test "encode chunk of 8 bytes" {
     var output: [4096]u8 = undefined;
     var ostream = std.io.fixedBufferStream(&output);
 
-    const bytes_read = try encodeChunk(&istream, &ostream);
+    const bytes_read = try encodeStream(&istream, &ostream);
     try testing.expectEqual(8, bytes_read);
 
     const expected = "MTIzNDU2Nzg=";
