@@ -31,10 +31,12 @@ fn encodeStream(in: anytype, out: anytype) !usize {
         chunk = std.mem.readInt(u24, &ibuf, .big);
 
         // We read at least one byte, so we know the first two sextets have data
-        obuf[0] = encodeOffsetValue(chunk, 18);
-        obuf[1] = encodeOffsetValue(chunk, 12);
-        obuf[2] = if (bytes_read >= 2) encodeOffsetValue(chunk, 6) else '=';
-        obuf[3] = if (bytes_read == 3) encodeOffsetValue(chunk, 0) else '=';
+        obuf = [4]u8{
+            encodeOffsetValue(chunk, 18),
+            encodeOffsetValue(chunk, 12),
+            if (bytes_read >= 2) encodeOffsetValue(chunk, 6) else '=',
+            if (bytes_read == 3) encodeOffsetValue(chunk, 0) else '=',
+        };
 
         try out.writer().writeAll(&obuf);
     }
