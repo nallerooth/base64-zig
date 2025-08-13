@@ -44,6 +44,19 @@ fn encodeStream(in: anytype, out: anytype) !usize {
     return total_read;
 }
 
+fn decodeStream(in: anytype, out: anytype) !usize {
+    _ = in;
+    _ = out;
+
+    // 1. Read the input stream in chunks of 4 bytes.
+    // 2. For each character, convert it to it'a corresponding index in the alphabet.
+    // 3. Combine the indices into a 24-bit integer.
+    // 4. Split the 24-bit integer into 3 bytes.
+    // 5. Write the bytes to the output steam, stopping when the input stream is exhausted or when a padding character is found.
+    // 6. Return the total number of bytes written to the output stream.
+
+    return 0;
+}
 // encodeOffsetValue applies a bitmask to the chunk and returns the alphabet
 // index for the resulting value.
 fn encodeOffsetValue(chunk: u24, offset: anytype) u8 {
