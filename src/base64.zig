@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 
-const alphabet = [_]u8{ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '+', '/' };
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890+/";
 
 // placeholder
 pub fn encode(bytes: []const u8) i32 {
@@ -45,17 +45,57 @@ fn encodeStream(in: anytype, out: anytype) !usize {
 }
 
 fn decodeStream(in: anytype, out: anytype) !usize {
-    _ = in;
-    _ = out;
+    var ibuf: [4]u8 = undefined;
+    var obuf: [3]u8 = undefined;
+    var total_written: usize = 0;
 
-    // 1. Read the input stream in chunks of 4 bytes.
-    // 2. For each character, convert it to it'a corresponding index in the alphabet.
-    // 3. Combine the indices into a 24-bit integer.
-    // 4. Split the 24-bit integer into 3 bytes.
-    // 5. Write the bytes to the output steam, stopping when the input stream is exhausted or when a padding character is found.
-    // 6. Return the total number of bytes written to the output stream.
+    while (true) {
+        const bytes_read = try in.reader().read(&ibuf);
+        if (bytes_read == 0) {
+            break;
+        }
+        if (bytes_read < 4) {
+            return error.InvalidBase64Input;
+        }
 
-    return 0;
+        // Convert each character to its corresponding index in the alphabet
+        var chunk: u24 = 0;
+        var padding_count: usize = 0;
+
+        for (ibuf, 0..) |c, i| {
+            if (c == '=') {
+                padding_count += 1;
+                continue;
+            }
+            // Characters after padding are invalid
+            if (padding_count > 0) {
+                return error.InvalidBase64Input;
+            }
+
+            const pos = std.mem.indexOfScalar(u8, alphabet, c) orelse return error.InvalidBase64Input;
+            const index: u24 = @truncate(pos);
+
+            // Shift the 6-bit value into the correct position in our 24-bit chunk.
+            chunk |= @as(u24, index) << @truncate(18 - i * 6);
+        }
+        obuf = [_]u8{
+            @truncate((chunk >> 16) & 0xFF),
+            @truncate((chunk >> 8) & 0xFF),
+            @truncate(chunk & 0xFF),
+        };
+
+        var bytes_to_write: usize = 3;
+        if (ibuf[3] == '=') {
+            bytes_to_write -= 1;
+            if (ibuf[2] == '=') {
+                bytes_to_write -= 1;
+            }
+        }
+        try out.writer().writeAll(obuf[0..bytes_to_write]);
+        total_written += bytes_to_write;
+    }
+
+    return total_written;
 }
 // encodeOffsetValue applies a bitmask to the chunk and returns the alphabet
 // index for the resulting value.
@@ -113,5 +153,32 @@ test "encode chunk of 8 bytes" {
     try testing.expectEqual(8, bytes_read);
 
     const expected = "MTIzNDU2Nzg=";
+    try std.testing.expectEqualStrings(expected, ostream.getWritten());
+}
+
+test "decode chunk of 8 bytes" {
+    var istream = std.io.fixedBufferStream("MTIzNDU2Nzg=");
+
+    var output: [4096]u8 = undefined;
+    var ostream = std.io.fixedBufferStream(&output);
+
+    const bytes_written = try decodeStream(&istream, &ostream);
+    try testing.expectEqual(8, bytes_written);
+
+    const expected = "12345678";
+    try std.testing.expectEqualStrings(expected, ostream.getWritten());
+}
+
+test "decode message" {
+    var istream = std.io.fixedBufferStream("dGhpcyBpcyBhbiBlbmNvZGVkIG1lc3NhZ2UK");
+
+    var output: [4096]u8 = undefined;
+    var ostream = std.io.fixedBufferStream(&output);
+
+    const expected = "this is an encoded message\n";
+
+    const bytes_written = try decodeStream(&istream, &ostream);
+    try testing.expectEqual(expected.len, bytes_written);
+
     try std.testing.expectEqualStrings(expected, ostream.getWritten());
 }
