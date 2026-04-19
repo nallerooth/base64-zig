@@ -3,16 +3,7 @@ const testing = std.testing;
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-// placeholder
-pub fn encode(bytes: []const u8) i32 {
-    for (bytes) |b| {
-        std.debug.print("{d}\n", .{b});
-    }
-    return 0;
-}
-
-// encodeChunk reads bytes from one stream and writes the output to another
-fn encodeStream(in: anytype, out: anytype) !usize {
+pub fn encodeStream(in: anytype, out: anytype) !usize {
     // Read up to 3 bytes at a time, resulting in 4 bytes of output
     var ibuf: [3]u8 = undefined;
     var obuf: [4]u8 = undefined;
@@ -45,7 +36,7 @@ fn encodeStream(in: anytype, out: anytype) !usize {
     return total_read;
 }
 
-fn decodeStream(in: anytype, out: anytype) !usize {
+pub fn decodeStream(in: anytype, out: anytype) !usize {
     var ibuf: [4]u8 = undefined;
     var obuf: [3]u8 = undefined;
     var total_written: usize = 0;
