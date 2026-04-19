@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890+/";
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 // placeholder
 pub fn encode(bytes: []const u8) i32 {
@@ -23,6 +23,7 @@ fn encodeStream(in: anytype, out: anytype) !usize {
     var bytes_read: usize = undefined;
 
     while (true) {
+        ibuf = [3]u8{ 0, 0, 0 };
         bytes_read = try in.reader().readAll(&ibuf);
         if (bytes_read == 0) {
             break;
@@ -50,7 +51,7 @@ fn decodeStream(in: anytype, out: anytype) !usize {
     var total_written: usize = 0;
 
     while (true) {
-        const bytes_read = try in.reader().read(&ibuf);
+        const bytes_read = try in.reader().readAll(&ibuf);
         if (bytes_read == 0) {
             break;
         }
@@ -139,7 +140,7 @@ test "encode chunk of 7 bytes" {
     const bytes_read = try encodeStream(&istream, &ostream);
     try testing.expectEqual(7, bytes_read);
 
-    const expected = "MTIzNDU2Nz==";
+    const expected = "MTIzNDU2Nw==";
     try std.testing.expectEqualStrings(expected, ostream.getWritten());
 }
 
